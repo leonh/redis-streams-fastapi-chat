@@ -1,0 +1,6 @@
+uvicorn
+starlette
+fastapi
+aioredis
+redis
+uvloop
