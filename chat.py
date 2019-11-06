@@ -7,6 +7,12 @@ from starlette.responses import HTMLResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+XREAD_TIMEOUT = 100000
+XREAD_COUNT = 100
+NUM_PREVIOUS = 30
+STREAM_MAX_LEN = 1000
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 app = FastAPI()
 PORT = 8080
@@ -42,7 +48,7 @@ html = f"""
         <form name="chat-info" id="chat-info" action="#" onsubmit="connect(event)">
             user: <input type="text" name="username" value="anon" autocomplete="off"/>
             room: <input type="text" name="room" value="chat1" autocomplete="off"/>
-            <button>Send</button>
+            <button>Connect</button>
         </form>
         <ul id='messages' style="height: 60vh; overflow: scroll">
         </ul>
@@ -91,7 +97,7 @@ async def get():
 
 async def ws_send(websocket: WebSocket, chat_info: dict):
     pool = await aioredis.create_redis_pool(
-        ('localhost', 6379), encoding='utf-8')
+        (REDIS_HOST, REDIS_PORT), encoding='utf-8')
     latest_ids = ['$']
     connected = True
     first_run = True
@@ -100,7 +106,7 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
             if first_run:
                 events = await pool.xrevrange(
                     stream=chat_info['room'],
-                    count=30,
+                    count=NUM_PREVIOUS,
                     start='+',
                     stop='-'
                 )
@@ -111,8 +117,8 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
             else:
                 events = await pool.xread(
                     streams=[chat_info['room']],
-                    count=100,
-                    timeout=100000,
+                    count=XREAD_COUNT,
+                    timeout=XREAD_TIMEOUT,
                     latest_ids=latest_ids
                 )
                 for _, e_id, e in events:
@@ -126,9 +132,9 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
 
 
 async def ws_recieve(websocket: WebSocket, chat_info: dict):
-    await announce_connected(chat_info)
+    await announce(chat_info, 'connected')
     pool = await aioredis.create_redis_pool(
-        ('localhost', 6379), encoding='utf-8')
+        (REDIS_HOST, REDIS_PORT), encoding='utf-8')
     connected = True
     while connected:
         try:
@@ -139,28 +145,19 @@ async def ws_recieve(websocket: WebSocket, chat_info: dict):
                                 'msg': data
                             },
                             message_id=b'*',
-                            max_len=1000)
+                            max_len=STREAM_MAX_LEN)
         except WebSocketDisconnect:
-            await announce_disconnected(chat_info)
+            await announce(chat_info, 'disconnected')
             connected = False
 
 
-async def announce_disconnected(chat_info: dict):
+async def announce(chat_info: dict, action: str):
     pool = await aioredis.create_redis_pool(
-        ('localhost', 6379), encoding='utf-8')
+        (REDIS_HOST, REDIS_PORT), encoding='utf-8')
     await pool.xadd(stream=chat_info['room'],
-                    fields={'msg': f"{chat_info['username']} disconnected"},
+                    fields={'msg': f"{chat_info['username']} {action}"},
                     message_id=b'*',
-                    max_len=1000)
-
-
-async def announce_connected(chat_info: dict):
-    pool = await aioredis.create_redis_pool(
-        ('localhost', 6379), encoding='utf-8')
-    await pool.xadd(stream=chat_info['room'],
-                    fields={'msg': f"{chat_info['username']} connected"},
-                    message_id=b'*',
-                    max_len=1000)
+                    max_len=STREAM_MAX_LEN)
 
 
 async def chat_info_vars(username: str = None, room: str = None):
@@ -170,7 +167,6 @@ async def chat_info_vars(username: str = None, room: str = None):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket,
                              chat_info: dict = Depends(chat_info_vars)):
-    print('/ws')
     await websocket.accept()
     await asyncio.gather(ws_recieve(websocket, chat_info),
                          ws_send(websocket, chat_info))
