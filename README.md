@@ -1,5 +1,5 @@
 # redis-streams-fastapi-chat
-Very simple toy example of a Redis Streams backed Chat app using Websockets, Python Asyncio and FastAPI/Starlette. (for learning purposes)
+A simple Redis Streams backed Chat app using Websockets, Python Asyncio and FastAPI/Starlette.
 
 Requires Python version >= 3.6
 
