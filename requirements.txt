@@ -1,6 +1,7 @@
 uvicorn
-starlette
 fastapi
 aioredis
 redis
 uvloop
+jinja2
+aiofiles
