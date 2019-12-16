@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Chat</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+    </head>
+    <style type="text/css">
+        span.announcement {font-style: italic; color: #b7b7b7}
+    </style>
+    <body>
+
+        <h1>WebSocket Chat</h1>
+        <form name="chat-info" id="chat-info" action="#">
+            user: <input type="text" name="username" value="ff" autocomplete="off"/>
+            room: <input type="text" name="room" value="chat:1" autocomplete="off"/>
+            <button>Connect</button>
+        </form>
+        <div id="chat-info">connected users: <span id="user-list"></span></div>
+        <div id="connection-output"></div>
+        <ul id='messages' style="height: 60vh; overflow: scroll">
+        </ul>
+        <form id="comment" action="#"  style="height: 20vh">
+            <input type="text" id="messageText" autocomplete="off"/>
+            <button>Send</button>
+        </form>
+        <script>
+            let ws = null;
+            // Display logging information in the document.
+            function log(s) {
+                let output = document.getElementById('connection-output');
+                output.innerHTML = s;
+
+                // Also log information on the javascript console
+
+                console.log(s);
+            }
+            function ws_connect(e) {
+                e.preventDefault();
+                let messages = document.getElementById('messages');
+                messages.innerHTML = '';
+                if (ws != null && ws.readyState == 1) {
+                  ws.close();
+                }
+
+                let room_info = new URLSearchParams(new FormData(document.getElementById('chat-info'))).toString();
+
+
+                ws = new WebSocket("ws://127.0.0.1:{{port}}/ws?" + room_info);
+
+                // Listen for the connection open event then call the sendMessage function
+                ws.onopen = function (e) {
+                    log("Connected");
+                };
+
+                // Listen for the close connection event
+                ws.onclose = function (e) {
+                    log("Disconnected " + e.reason);
+                };
+
+                // Listen for connection errors
+                ws.onerror = function (e) {
+                    log("Error " + e.reason);
+                };
+
+                ws.onmessage = function(e) {
+                    let messages = document.getElementById('messages');
+                    let message = document.createElement('li');
+                    let data = JSON.parse(e.data);
+                    let message_content = null;
+
+                    if (data['type'] == 'comment') {
+                        message_content = document.createElement('span');
+                        message_content.appendChild(
+                            document.createTextNode(data['uname']+": "+data['msg'])
+                        );
+                        message_content.setAttribute('class', 'comment')
+                    }
+                    if (data['type'] == 'announcement') {
+                        message_content = document.createElement('span');
+                        message_content.appendChild(document.createTextNode(data['msg']));
+                        message_content.setAttribute('class', 'announcement');
+                        let user_list = document.getElementById('user-list');
+                        user_list.innerHTML = data['users'];
+                    }
+                    message.appendChild(message_content);
+                    messages.appendChild(message);
+                    messages.scrollTop = messages.scrollHeight;
+                };
+            }
+
+            function sendMessage(e) {
+                let input = document.getElementById("messageText");
+                let msg = input.value.trim();
+
+                if (ws != null && msg.length) {
+                    if (ws.readyState == 3) {
+                        ws_connect(e);
+                        log("Reconnect");
+                    }
+
+                    if (ws.readyState == 1) {
+                        let data = {msg: msg};
+                        ws.send(JSON.stringify(data));
+                        input.value = '';
+                        log("Message sent");
+                    }
+                }
+                if (ws == null && msg.length) {
+                    log("Connection to room is required");
+                    console.log("Connection to room is required");
+                }
+                if (!msg.length) {
+                    log("Empty message");
+                }
+                e.preventDefault()
+            }
+            const chat_info = document.getElementById('chat-info');
+            const commet = document.getElementById('comment');
+            chat_info.addEventListener('submit', ws_connect);
+            commet.addEventListener('submit', sendMessage);
+        </script>
+    </body>
+</html>

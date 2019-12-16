@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Chat</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+    </head>
+    <style type="text/css">
+        span.announcement {font-style: italic; color: #b7b7b7}
+    </style>
+    <body>
+
+        <h1>WebSocket Chat - Moderator</h1>
+        <form name="chat-info" id="chat-info" action="#">
+            user: <input type="text" name="username" value="moderator" autocomplete="off"/>
+            room: <input type="text" name="room" value="chat:1,chat:2,chat:3" autocomplete="off"/>
+            <button>Connect</button>
+        </form>
+        <div id="chat-info"><h3>connected users</h3>
+          <div id="user-list"></div>
+        </div>
+        <ul id='messages' style="height: 60vh; overflow: scroll">
+        </ul>
+        <form id="comment" action="#"  style="height: 20vh">
+            <input type="text" id="messageText" autocomplete="off"/>
+            <button>Send</button>
+        </form>
+        <script>
+            let ws = null;
+            function connect(e) {
+                e.preventDefault();
+                let messages = document.getElementById('messages')
+                messages.innerHTML = '';
+                if (ws != null) {
+                  ws.close()
+                }
+
+                let room_info = new URLSearchParams(new FormData(document.getElementById('chat-info'))).toString();
+                ws = new WebSocket("ws://127.0.0.1:{{port}}/ws/moderator?" + room_info);
+
+                ws.onmessage = function(e) {
+                    let messages = document.getElementById('messages');
+                    let message = document.createElement('li');
+                    let data = JSON.parse(e.data);
+                    let message_content = null;
+                    if (data['type'] == 'comment') {
+                        message_content = document.createElement('span');
+                        message_content.appendChild(
+                            document.createTextNode(data['room']+": "+data['uname']+": "+data['msg'])
+                        );
+                        message_content.setAttribute('class', 'comment')
+                    }
+                    if (data['type'] == 'announcement') {
+                        let room_id  = data['room'];
+                        room_id = room_id.replace(':', '-');
+                        message_content = document.createElement('span');
+                        message_content.appendChild(document.createTextNode(data['room']+": "+data['msg']));
+                        message_content.setAttribute('class', 'announcement');
+                        let all_user_rooms = document.getElementById('user-list');
+                        let room_list = all_user_rooms.querySelector('#'+room_id);
+                        if (room_list == null) {
+                          room_list = document.createElement('div');
+                          room_list.setAttribute('id', room_id);
+                          all_user_rooms.appendChild(room_list);
+                        }
+                        room_list.innerHTML = data['room'] +": "+ data['users'];
+                    }
+                    message.appendChild(message_content);
+                    messages.appendChild(message);
+                    messages.scrollTop = messages.scrollHeight;
+                };
+            }
+            function sendMessage(e) {
+                let input = document.getElementById("messageText");
+                let data = {msg: input.value};
+                ws.send(JSON.stringify(data));
+                input.value = '';
+                e.preventDefault()
+            }
+            const chat_info = document.getElementById('chat-info');
+            const commet = document.getElementById('comment');
+            chat_info.addEventListener('submit', connect);
+            commet.addEventListener('submit', sendMessage);
+        </script>
+    </body>
+</html>
