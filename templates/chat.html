@@ -43,9 +43,11 @@
                 }
 
                 let room_info = new URLSearchParams(new FormData(document.getElementById('chat-info'))).toString();
-
-
-                ws = new WebSocket("ws://" + window.location.host + "/ws?" + room_info);
+                let ws_protocol = "ws://";
+                if (window.location.protocol == 'https:') {
+                    ws_protocol =  "wss://";
+                }
+                ws = new WebSocket(ws_protocol + window.location.host + "/ws?" + room_info);
 
                 // Listen for the connection open event then call the sendMessage function
                 ws.onopen = function (e) {
