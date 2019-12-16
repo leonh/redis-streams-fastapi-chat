@@ -1,0 +1,12 @@
+version: '3'
+services:
+  chat:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/code
+    links:
+      - "redis"
+  redis:
+    image: "redis:alpine"
