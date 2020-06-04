@@ -1,0 +1,17 @@
+config:
+    target: "ws://0.0.0.0:9080/ws"
+    ensure:
+      maxErrorRate: 1
+    phases:
+      - duration: 2
+        arrivalCount: 2
+        name: "Warming up"
+      - duration: 10
+        arrivalCount: 20
+        name: "Max load"
+scenarios:
+  - engine: ws
+    flow:
+      - think: 6
+      - send:
+        - msg: "foo"

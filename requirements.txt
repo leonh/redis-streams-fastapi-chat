@@ -5,3 +5,8 @@ redis
 uvloop
 jinja2
 aiofiles
+-e git+https://github.com/lepture/authlib.git#egg=authlib
+httpx
+itsdangerous
+databases[sqlite]
+sqlalchemy

@@ -43,9 +43,9 @@
                 }
 
                 let room_info = new URLSearchParams(new FormData(document.getElementById('chat-info'))).toString();
-                let ws_protocol = "ws://";
-                if (window.location.protocol == 'https:') {
-                    ws_protocol =  "wss://";
+                let ws_protocol = "wss://";
+                if (window.location.protocol == 'http:') {
+                    ws_protocol =  "ws://";
                 }
                 ws = new WebSocket(ws_protocol + window.location.host + "/ws?" + room_info);
 
