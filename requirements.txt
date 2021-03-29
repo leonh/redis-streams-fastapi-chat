@@ -6,7 +6,6 @@ redis==3.5.3
 uvloop==0.15.2
 jinja2==2.11.3
 aiofiles==0.6.0
--e git+https://github.com/lepture/authlib.git#egg=authlib
 httpx==0.17.1
 itsdangerous==1.1.0
 databases[sqlite]==0.4.3
