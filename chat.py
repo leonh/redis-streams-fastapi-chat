@@ -44,7 +44,6 @@ class CustomHeaderMiddleware(BaseHTTPMiddleware):
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(CustomHeaderMiddleware)
 templates = Jinja2Templates(directory="templates")
 
