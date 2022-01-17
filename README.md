@@ -4,7 +4,7 @@ A simple demo of Redis Streams backed Chat app using Websockets, Python Asyncio 
 Requires Python version >= 3.6 and Redis
 
 # Overview
-This project has been created to help understand some realted concepts. Python standard library asyncio, websockets (which are often cited as a classic use case for async python code), also Redis Streams. It is very much inteded to be an intentionally simple starting point rather than a usable product as is.
+This project has been created to help understand some related concepts. Python standard library asyncio, websockets (which are often cited as a classic use case for async python code), also Redis Streams. It is very much inteded to be an intentionally simple starting point rather than a usable product as is.
 
 # Installation
 
