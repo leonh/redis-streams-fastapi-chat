@@ -172,7 +172,7 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
     pool.close()
 
 
-async def ws_recieve(websocket: WebSocket, chat_info: dict):
+async def ws_receive(websocket: WebSocket, chat_info: dict):
     """
     receive json data from client over a WebSocket, add messages onto the
     associated chat stream
@@ -300,7 +300,7 @@ async def websocket_endpoint(websocket: WebSocket,
     else:
 
         # spin up coro's for inbound and outbound communication over the socket
-        await asyncio.gather(ws_recieve(websocket, chat_info),
+        await asyncio.gather(ws_receive(websocket, chat_info),
                              ws_send(websocket, chat_info))
 
 
