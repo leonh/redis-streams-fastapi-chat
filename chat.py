@@ -15,8 +15,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from redis.exceptions import ConnectionError as ServerConnectionClosedError
 
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 XREAD_TIMEOUT = 0
 XREAD_COUNT = 100
 NUM_PREVIOUS = 30
