@@ -1,10 +1,11 @@
 import os
 import asyncio
-import aioredis
+from redis import asyncio as aioredis
 import uvloop
 import socket
 import uuid
 import contextvars
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Request
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -12,10 +13,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
-from aioredis.errors import ConnectionClosedError as ServerConnectionClosedError
+from redis.exceptions import ConnectionError as ServerConnectionClosedError
 
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 XREAD_TIMEOUT = 0
 XREAD_COUNT = 100
 NUM_PREVIOUS = 30
@@ -43,7 +44,32 @@ class CustomHeaderMiddleware(BaseHTTPMiddleware):
 
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        redis_url = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+        pool = await aioredis.from_url(
+            redis_url,
+            encoding='utf-8',
+            decode_responses=True,
+            max_connections=20
+        )
+        cvar_redis.set(pool)
+        print("Connected to Redis on ", REDIS_HOST, REDIS_PORT)
+    except ConnectionRefusedError as e:
+        print('cannot connect to redis on:', REDIS_HOST, REDIS_PORT)
+
+    yield
+
+    # Shutdown
+    redis = cvar_redis.get()
+    if redis:
+        await redis.aclose()
+        print("closed connection Redis on ", REDIS_HOST, REDIS_PORT)
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(CustomHeaderMiddleware)
 templates = Jinja2Templates(directory="templates")
 
@@ -73,8 +99,12 @@ def get_local_ip():
 
 async def get_redis_pool():
     try:
-        pool = await aioredis.create_redis_pool(
-            (REDIS_HOST, REDIS_PORT), encoding='utf-8')
+        redis_url = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+        pool = await aioredis.from_url(
+            redis_url,
+            encoding='utf-8',
+            decode_responses=True
+        )
         return pool
     except ConnectionRefusedError as e:
         print('cannot connect to redis on:', REDIS_HOST, REDIS_PORT)
@@ -97,21 +127,20 @@ async def ws_send_moderator(websocket: WebSocket, chat_info: dict):
     """
     pool = await get_redis_pool()
     streams = chat_info['room'].split(',')
-    latest_ids = ['$' for i in streams]
+    latest_ids = {stream: '$' for stream in streams}
     ws_connected = True
     print(streams, latest_ids)
     while pool and ws_connected:
         try:
             events = await pool.xread(
-                streams=streams,
+                streams=latest_ids,
                 count=XREAD_COUNT,
-                timeout=XREAD_TIMEOUT,
-                latest_ids=latest_ids
+                block=5000  # Block for 5 seconds waiting for new messages
             )
-            for _, e_id, e in events:
-                e['e_id'] = e_id
-                await websocket.send_json(e)
-                #latest_ids = [e_id]
+            for stream, messages in events:
+                for e_id, e in messages:
+                    e['e_id'] = e_id
+                    await websocket.send_json(e)
         except ConnectionClosedError:
             ws_connected = False
 
@@ -130,7 +159,8 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
     :type chat_info:
     """
     pool = await get_redis_pool()
-    latest_ids = ['$']
+    stream_key = cvar_tenant.get() + ":stream"
+    latest_ids = {stream_key: '$'}
     ws_connected = True
     first_run = True
     while pool and ws_connected:
@@ -138,10 +168,10 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
             if first_run:
                 # fetch some previous chat history
                 events = await pool.xrevrange(
-                    stream=cvar_tenant.get() + ":stream",
+                    name=stream_key,
                     count=NUM_PREVIOUS,
-                    start='+',
-                    stop='-'
+                    min='-',
+                    max='+'
                 )
                 first_run = False
                 events.reverse()
@@ -150,15 +180,15 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
                     await websocket.send_json(e)
             else:
                 events = await pool.xread(
-                    streams=[cvar_tenant.get() + ":stream"],
+                    streams=latest_ids,
                     count=XREAD_COUNT,
-                    timeout=XREAD_TIMEOUT,
-                    latest_ids=latest_ids
+                    block=5000  # Block for 5 seconds waiting for new messages
                 )
-                for _, e_id, e in events:
-                    e['e_id'] = e_id
-                    await websocket.send_json(e)
-                    latest_ids = [e_id]
+                for stream, messages in events:
+                    for e_id, e in messages:
+                        e['e_id'] = e_id
+                        await websocket.send_json(e)
+                        latest_ids = {stream_key: e_id}
             #print('################contextvar ', cvar_tenant.get())
         except ConnectionClosedError:
             ws_connected = False
@@ -169,7 +199,7 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
         except ServerConnectionClosedError:
             print('redis server connection closed')
             return
-    pool.close()
+    await pool.aclose()
 
 
 async def ws_recieve(websocket: WebSocket, chat_info: dict):
@@ -205,10 +235,12 @@ async def ws_recieve(websocket: WebSocket, chat_info: dict):
                 'type': 'comment',
                 'room': chat_info['room']
             }
-            await pool.xadd(stream=cvar_tenant.get() + ":stream",
-                            fields=fields,
-                            message_id=b'*',
-                            max_len=STREAM_MAX_LEN)
+            await pool.xadd(
+                name=cvar_tenant.get() + ":stream",
+                fields=fields,
+                id='*',
+                maxlen=STREAM_MAX_LEN
+            )
             #print('################contextvar ', cvar_tenant.get())
         except WebSocketDisconnect:
             await remove_room_user(chat_info, pool)
@@ -223,7 +255,7 @@ async def ws_recieve(websocket: WebSocket, chat_info: dict):
             print('redis server connection closed')
             return
 
-    pool.close()
+    await pool.aclose()
 
 
 async def add_room_user(chat_info: dict, pool):
@@ -259,10 +291,12 @@ async def announce(pool, chat_info: dict, action: str):
     }
     #print(fields)
 
-    await pool.xadd(stream=cvar_tenant.get() + ":stream",
-                    fields=fields,
-                    message_id=b'*',
-                    max_len=STREAM_MAX_LEN)
+    await pool.xadd(
+        name=cvar_tenant.get() + ":stream",
+        fields=fields,
+        id='*',
+        maxlen=STREAM_MAX_LEN
+    )
 
 
 async def chat_info_vars(username: str = None, room: str = None):
@@ -355,28 +389,8 @@ async def verify_user_for_room(chat_info):
     # whitelist rooms
     if not chat_info['room'] in ALLOWED_ROOMS:
         verified = False
-    pool.close()
+    await pool.aclose()
     return verified
-
-
-@app.on_event("startup")
-async def handle_startup():
-    try:
-        pool = await aioredis.create_redis_pool(
-            (REDIS_HOST, REDIS_PORT), encoding='utf-8', maxsize=20)
-        cvar_redis.set(pool)
-        print("Connected to Redis on ", REDIS_HOST, REDIS_PORT)
-    except ConnectionRefusedError as e:
-        print('cannot connect to redis on:', REDIS_HOST, REDIS_PORT)
-        return
-
-
-@app.on_event("shutdown")
-async def handle_shutdown():
-    redis = cvar_redis.get()
-    redis.close()
-    await redis.wait_closed()
-    print("closed connection Redis on ", REDIS_HOST, REDIS_PORT)
 
 
 if __name__ == "__main__":

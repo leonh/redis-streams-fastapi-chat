@@ -1,4 +1,4 @@
-FROM python:3.8-alpine
+FROM python:3.11-alpine
 WORKDIR /code
 # ENV FLASK_APP app.py
 RUN apk add --no-cache gcc musl-dev linux-headers make python3-dev openssl-dev libffi-dev git
