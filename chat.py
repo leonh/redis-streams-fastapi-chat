@@ -135,7 +135,7 @@ async def ws_send_moderator(websocket: WebSocket, chat_info: dict):
             events = await pool.xread(
                 streams=latest_ids,
                 count=XREAD_COUNT,
-                block=XREAD_TIMEOUT if XREAD_TIMEOUT > 0 else None
+                block=5000  # Block for 5 seconds waiting for new messages
             )
             for stream, messages in events:
                 for e_id, e in messages:
@@ -182,7 +182,7 @@ async def ws_send(websocket: WebSocket, chat_info: dict):
                 events = await pool.xread(
                     streams=latest_ids,
                     count=XREAD_COUNT,
-                    block=XREAD_TIMEOUT if XREAD_TIMEOUT > 0 else None
+                    block=5000  # Block for 5 seconds waiting for new messages
                 )
                 for stream, messages in events:
                     for e_id, e in messages:
