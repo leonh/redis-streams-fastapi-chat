@@ -11,6 +11,6 @@ services:
     links:
       - "redis"
   redis:
-    image: "redis:6.0-rc2-alpine3.11"
+    image: "redis:7-alpine"
     ports:
       - 6379:6379
